@@ -1,41 +1,31 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
+
+# Virtual environments
 env/
-build/
-develop-eggs/
+venv/
+ENV/
+.env
+
+# Distribution / packaging
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
+build/
 *.egg-info/
-.installed.cfg
-*.egg
 
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Virtual Environment
-venv/
-ENV/
-env/
+# Model files (uncommenting this line would ignore saved models)
+# models/*.pkl
 
-# Models and large files
-*.pkl
-*.h5
-*.model
+# Data files (uncommenting this would ignore all data)
+# data/interim/*
+# data/output/*
 
-# Data files
-# Uncomment if you want to exclude data files from version control
-# *.csv
+# Images
+# reports/figures/*
 
 # IDE specific files
 .idea/
@@ -43,11 +33,5 @@ env/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Logs
+*.log

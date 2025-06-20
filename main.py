@@ -5,100 +5,115 @@ This is the main script for the Telco Customer Churn prediction project.
 It loads the data, preprocesses it, trains a model, and evaluates its performance.
 """
 
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
-def load_data(filepath='Telco_Customer_kaggle.csv'):
-    """Load and return the Telco Customer dataset"""
-    print("Loading data...")
-    data = pd.read_csv(filepath)
-    print(f"Dataset loaded with {data.shape[0]} rows and {data.shape[1]} columns")
-    return data
-
-def preprocess_data(data):
-    """Preprocess the data for model training"""
-    print("Preprocessing data...")
-    
-    # Check for missing values
-    if data.isnull().sum().sum() > 0:
-        print("Handling missing values...")
-        data.fillna(data.mode().iloc[0], inplace=True)
-    
-    # Convert categorical variables
-    categorical_cols = data.select_dtypes(include=['object']).columns
-    data_processed = pd.get_dummies(data, columns=categorical_cols, drop_first=True)
-    
-    # Extract features and target
-    if 'Churn' in data.columns:
-        # Convert Churn to binary (1 for 'Yes', 0 for 'No')
-        data['Churn_Binary'] = (data['Churn'] == 'Yes').astype(int)
-        y = data['Churn_Binary']
-        X = data_processed.drop(['Churn', 'Churn_Binary'], axis=1)
-    else:
-        print("Warning: 'Churn' column not found in dataset")
-        X = data_processed
-        y = None
-        
-    return X, y
-
-def train_model(X, y):
-    """Train a Random Forest model"""
-    print("Training model...")
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42)
-    
-    # Scale features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    # Train model
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train_scaled, y_train)
-    
-    # Make predictions
-    y_pred = model.predict(X_test_scaled)
-    
-    # Evaluate model
-    print("\nModel Evaluation:")
-    print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
-    
-    return model, scaler, (X_train, X_test, y_train, y_test)
+# Import project modules
+from src.data_processing import (
+    load_data, clean_data, feature_engineering, 
+    preprocess_data_for_modeling, split_data, save_processed_data
+)
+from src.model_training import (
+    train_logistic_regression, train_random_forest, train_gradient_boosting,
+    evaluate_model, plot_confusion_matrix, plot_feature_importance, save_model
+)
+from src.visualization import (
+    set_plotting_style, plot_correlation_heatmap, 
+    plot_churn_by_feature
+)
 
 def main():
-    """Main function to run the entire pipeline"""
-    print("Starting Telco Customer Churn Prediction project...")
+    """
+    Main function to run the complete ML pipeline
+    """
+    print("Starting Telco Customer Churn Prediction Pipeline...")
     
-    # Load data
-    data = load_data()
+    # Create output directories if they don't exist
+    os.makedirs('models', exist_ok=True)
+    os.makedirs('reports/figures', exist_ok=True)
     
-    # Display basic info
-    print("\nBasic information about the dataset:")
-    print(data.info())
-    print("\nSummary statistics:")
-    print(data.describe())
+    # 1. Data Loading
+    print("\n--- Data Loading ---")
+    df = load_data('data/input/Telco_Customer_kaggle.csv')
+    print(f"Dataset shape: {df.shape}")
     
-    # Preprocess data
-    X, y = preprocess_data(data)
+    # 2. Data Cleaning and Feature Engineering
+    print("\n--- Data Preprocessing ---")
+    df_clean = clean_data(df)
+    df_features = feature_engineering(df_clean)
     
-    # Train and evaluate model
-    if y is not None:
-        model, scaler, (X_train, X_test, y_train, y_test) = train_model(X, y)
-        print("\nModel training complete!")
-    else:
-        print("Cannot train model without target variable.")
+    # 3. Data Preprocessing for Modeling
+    print("\n--- Preparing Data for Modeling ---")
+    X, y, preprocessor = preprocess_data_for_modeling(df_features)
+    X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.25)
     
-    print("Pipeline execution completed!")
+    # Save processed data
+    save_processed_data(X_train, X_test, y_train, y_test, output_path='data/interim/')
+    
+    # 4. Model Training
+    print("\n--- Model Training ---")
+    
+    # Train multiple models
+    models = {
+        'logistic': train_logistic_regression(X_train, y_train),
+        'random_forest': train_random_forest(X_train, y_train, n_estimators=200),
+        'gradient_boosting': train_gradient_boosting(X_train, y_train, n_estimators=150)
+    }
+    
+    # 5. Model Evaluation
+    print("\n--- Model Evaluation ---")
+    best_model_name = None
+    best_model_score = 0
+    
+    for name, model in models.items():
+        print(f"\nEvaluating {name} model:")
+        metrics = evaluate_model(model, X_test, y_test)
+        
+        # Save confusion matrix
+        plot_confusion_matrix(model, X_test, y_test, 
+                            save_path=f'reports/figures/{name}_confusion_matrix.png')
+        
+        # Track best model
+        if metrics['roc_auc'] > best_model_score:
+            best_model_score = metrics['roc_auc']
+            best_model_name = name
+    
+    # 6. Feature Importance for best model
+    if best_model_name in ['random_forest', 'gradient_boosting']:
+        best_model = models[best_model_name]
+        feature_names = X.columns
+        plot_feature_importance(best_model, feature_names, 
+                              save_path=f'reports/figures/{best_model_name}_feature_importance.png')
+      # 7. Save best model
+    best_model = models[best_model_name]
+    save_model(best_model, f'{best_model_name}_model.pkl')
+    print(f"\nBest model: {best_model_name} with ROC AUC: {best_model_score:.4f}")
+    
+    # 8. Visualizations
+    print("\n--- Creating Visualizations ---")
+    set_plotting_style()
+    
+    # Plot correlation heatmap
+    numeric_cols = df_clean.select_dtypes(include=['float64', 'int64']).columns
+    plot_correlation_heatmap(df_clean[numeric_cols], 
+                          save_path='reports/figures/correlation_heatmap.png')
+    
+    # Plot churn rates for key features
+    key_features = ['Contract', 'TenureGroup', 'MonthlyChargesGroup', 'PaymentMethod']
+    for feature in key_features:
+        if feature in df_features.columns:
+            plot_churn_by_feature(df_features, feature, 
+                               save_path=f'reports/figures/churn_by_{feature}.png')
+    
+    print("\nPipeline completed successfully!")
 
 if __name__ == "__main__":
     main()
